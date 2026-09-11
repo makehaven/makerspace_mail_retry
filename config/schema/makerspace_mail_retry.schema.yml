@@ -1,0 +1,16 @@
+makerspace_mail_retry.settings:
+  type: config_object
+  label: 'Makerspace mail retry settings'
+  mapping:
+    inner_plugin:
+      type: string
+      label: 'Mail plugin that performs the actual send'
+    max_retries:
+      type: integer
+      label: 'Retries after the first attempt'
+    backoff:
+      type: sequence
+      label: 'Seconds to wait before each retry'
+      sequence:
+        type: integer
+        label: 'Delay in seconds'

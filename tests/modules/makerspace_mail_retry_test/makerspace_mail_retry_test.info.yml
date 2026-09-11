@@ -1,0 +1,5 @@
+name: 'Makerspace Mail Retry test fixture'
+type: module
+description: 'Provides a mail plugin that always fails, so the retry path can be exercised.'
+package: Testing
+core_version_requirement: ^10 || ^11

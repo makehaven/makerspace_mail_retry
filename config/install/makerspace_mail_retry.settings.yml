@@ -1,0 +1,10 @@
+# The mail plugin that actually sends. This module never sends by itself; it
+# delegates, and only gets involved when the delegate reports failure.
+inner_plugin: SMTPMailSystem
+# Retries after the first attempt. 0 disables retrying entirely and makes this
+# module a pure pass-through.
+max_retries: 4
+# Seconds to wait before each retry. Shorter than the list means the last value
+# repeats. A transient connection blip clears in minutes; six hours is the
+# give-up horizon.
+backoff: [300, 900, 3600, 21600]

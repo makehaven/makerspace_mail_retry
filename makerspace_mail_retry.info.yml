@@ -1,0 +1,6 @@
+name: 'Makerspace Mail Retry'
+type: module
+description: 'Retries transactional email that failed to leave the building, so a transient SMTP connection failure stops being a permanently lost message.'
+package: Makerspace
+core_version_requirement: ^10 || ^11
+php: 8.1
