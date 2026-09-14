@@ -7,7 +7,7 @@ namespace Drupal\makerspace_mail_retry\Plugin\QueueWorker;
 use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Mail\MailManagerInterface;
 use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
-use Drupal\Core\Queue\QueueFactory;
+use Drupal\Core\Queue\DelayedRequeueException;
 use Drupal\Core\Queue\QueueWorkerBase;
 use Drupal\makerspace_mail_retry\Plugin\Mail\RetryingMailSystem;
 use Psr\Log\LoggerInterface;
@@ -30,7 +30,6 @@ final class MailRetryWorker extends QueueWorkerBase implements ContainerFactoryP
     $plugin_definition,
     private readonly MailManagerInterface $mailManager,
     private readonly ConfigFactoryInterface $configFactory,
-    private readonly QueueFactory $queueFactory,
     private readonly LoggerInterface $logger,
     private readonly int $now,
   ) {
@@ -47,7 +46,6 @@ final class MailRetryWorker extends QueueWorkerBase implements ContainerFactoryP
       $plugin_definition,
       $container->get('plugin.manager.mail'),
       $container->get('config.factory'),
-      $container->get('queue'),
       $container->get('logger.factory')->get('makerspace_mail_retry'),
       (int) $container->get('datetime.time')->getRequestTime(),
     );
@@ -67,12 +65,14 @@ final class MailRetryWorker extends QueueWorkerBase implements ContainerFactoryP
     $to = $message['to'];
     $subject = $message['subject'] ?? '(none)';
 
-    // Core's database queue has no scheduled availability, so the wait is
-    // carried on the item. Anything not yet due goes straight back on the
-    // queue; returning normally deletes the copy we just claimed.
-    if ($this->now < (int) ($data['not_before'] ?? 0)) {
-      $this->requeue($data);
-      return;
+    // The wait is carried on the item. Anything not yet due is handed back
+    // with its remaining delay: core parks it (DatabaseQueue::delayItem) and
+    // cron moves on. Re-creating the item instead would make claimItem()
+    // hand it straight back, and the worker would spin for its whole time
+    // budget on every cron run while a message sat in backoff.
+    $not_before = (int) ($data['not_before'] ?? 0);
+    if ($this->now < $not_before) {
+      throw new DelayedRequeueException($not_before - $this->now);
     }
 
     try {
@@ -87,8 +87,7 @@ final class MailRetryWorker extends QueueWorkerBase implements ContainerFactoryP
         '@subject' => $subject,
         '@error' => $e->getMessage(),
       ]);
-      $this->requeue($data);
-      return;
+      throw new DelayedRequeueException(300);
     }
 
     if ($plugin->delegate()->mail($message)) {
@@ -115,13 +114,6 @@ final class MailRetryWorker extends QueueWorkerBase implements ContainerFactoryP
     }
 
     $plugin->enqueue($message, $attempts);
-  }
-
-  /**
-   * Puts an item back without counting it as an attempt.
-   */
-  private function requeue(array $data): void {
-    $this->queueFactory->get(RetryingMailSystem::QUEUE)->createItem($data);
   }
 
 }

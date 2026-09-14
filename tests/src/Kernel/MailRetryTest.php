@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Drupal\Tests\makerspace_mail_retry\Kernel;
 
+use Drupal\Core\Queue\DelayedRequeueException;
 use Drupal\KernelTests\KernelTestBase;
 use Drupal\makerspace_mail_retry\Plugin\Mail\RetryingMailSystem;
 
@@ -106,6 +107,25 @@ class MailRetryTest extends KernelTestBase {
 
     $item = $this->container->get('queue')->get(RetryingMailSystem::QUEUE)->claimItem();
     $this->assertSame(['from_name' => 'MakeHaven'], $item->data['message']['params']);
+  }
+
+  /**
+   * A queued message that is not yet due is delayed, not re-queued.
+   *
+   * Re-creating the item would let claimItem() hand it straight back and the
+   * worker would spin for its whole cron budget while a message sat in
+   * backoff; DelayedRequeueException lets core park it instead.
+   */
+  public function testNotYetDueItemIsDelayed(): void {
+    $this->useFailingDelegate();
+    $this->plugin()->mail($this->message());
+
+    $queue = $this->container->get('queue')->get(RetryingMailSystem::QUEUE);
+    $item = $queue->claimItem();
+    $worker = $this->container->get('plugin.manager.queue_worker')->createInstance('makerspace_mail_retry');
+
+    $this->expectException(DelayedRequeueException::class);
+    $worker->processItem($item->data);
   }
 
   /**
